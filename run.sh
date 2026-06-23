@@ -8,21 +8,25 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-echo "Setting up virtual environment..."
-python3 -m venv .venv
+APP_DIR="$HOME/.local/share/PlaylistConverter"
+mkdir -p "$APP_DIR"
+VENV_PATH="$APP_DIR/.venv"
 
-echo "Installing dependencies..."
-./.venv/bin/pip install spotapi ytmusicapi requests pymongo redis websockets --quiet
+if [ ! -d "$VENV_PATH" ]; then
+    echo "Setting up environment..."
+    python3 -m venv "$VENV_PATH"
+    echo "Installing dependencies..."
+    "$VENV_PATH/bin/pip" install spotapi ytmusicapi requests pymongo redis websockets --quiet --disable-pip-version-check
+fi
 
 echo "Downloading converter..."
-curl -sO https://raw.githubusercontent.com/Dxrmy/playlist-converter/04dc30b07f56f947ac9ddec1be3f39f6f9575a9c/converter.py
+curl -sO https://raw.githubusercontent.com/Dxrmy/playlist-converter/d88f0611c68b536faf7600ceaad7541c5a334229/converter.py
 
 echo "Running converter..."
 set +e
-./.venv/bin/python converter.py
+"$VENV_PATH/bin/python" converter.py
 set -e
 
 echo "Cleaning up..."
-rm -rf .venv
 rm -f converter.py
 echo "Done!"
