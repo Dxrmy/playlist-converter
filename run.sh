@@ -20,7 +20,7 @@ if [ ! -d "$VENV_PATH" ]; then
 fi
 
 echo "Downloading converter..."
-curl -sO https://raw.githubusercontent.com/Dxrmy/playlist-converter/d88f0611c68b536faf7600ceaad7541c5a334229/converter.py
+curl -sO https://raw.githubusercontent.com/Dxrmy/playlist-converter/d5bec2eba2a2bcb0f04ecb693f18f66b0a11ab64/converter.py
 
 echo "Running converter..."
 set +e
