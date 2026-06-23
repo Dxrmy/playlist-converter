@@ -70,6 +70,8 @@ def spotify_to_ytm():
     pl_data = info.get("data", {}).get("playlistV2", {})
     title = pl_data.get("name", "Spotify Playlist")
     owner = pl_data.get("ownerV2", {}).get("data", {}).get("name", "")
+    if owner:
+        title = f"{title} - {owner}"
     print(f"Found Spotify playlist: {title}")
     
     # Get all tracks
