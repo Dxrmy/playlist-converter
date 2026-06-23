@@ -63,8 +63,8 @@ def spotify_to_ytm():
     # Get all tracks
     tracks = []
     for batch in pl.paginate_playlist():
-        for item in batch:
-            track = item.get("item", {}).get("data", {})
+        for item in batch.get("items", []):
+            track = item.get("itemV2", {}).get("data", {})
             if track:
                 t_name = track.get("name", "")
                 t_artists = " ".join([a.get("profile", {}).get("name", "") for a in track.get("artists", {}).get("items", [])])
