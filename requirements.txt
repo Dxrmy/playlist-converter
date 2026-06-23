@@ -1,0 +1,3 @@
+spotapi
+ytmusicapi
+requests

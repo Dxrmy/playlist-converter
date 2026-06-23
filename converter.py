@@ -1,0 +1,111 @@
+import sys
+import re
+from ytmusicapi import YTMusic
+from spotapi import Login, Config, NoopLogger, PrivatePlaylist, Song, PublicPlaylist
+
+def get_ytm_playlist_id(url):
+    match = re.search(r'list=([a-zA-Z0-9_-]+)', url)
+    if match: return match.group(1)
+    return url
+
+def get_spotify_playlist_id(url):
+    match = re.search(r'playlist/([a-zA-Z0-9]+)', url)
+    if match: return match.group(1)
+    return url
+
+def ytm_to_spotify():
+    url = input("Enter YouTube Music playlist URL: ")
+    pl_id = get_ytm_playlist_id(url)
+    print("\nFetching YT Music playlist...")
+    ytm = YTMusic()
+    pl = ytm.get_playlist(pl_id)
+    print(f"Found YT Music playlist: {pl['title']}")
+    
+    print("\nLog in to Spotify to create playlist:")
+    email = input("Spotify Email: ")
+    password = input("Spotify Password: ")
+    cfg = Config(logger=NoopLogger())
+    instance = Login(cfg, password, email=email)
+    print("Logging into Spotify...")
+    instance.login()
+    
+    priv_pl = PrivatePlaylist(instance)
+    new_uri = priv_pl.create_playlist(f"{pl['title']} (from YTM)")
+    priv_pl.set_playlist(new_uri)
+    song_api = Song(priv_pl)
+    
+    for track in pl['tracks']:
+        title = track['title']
+        artists = " ".join([a['name'] for a in track['artists']]) if track['artists'] else ""
+        query = f"{title} {artists}"
+        print(f"Searching Spotify for: {query}")
+        try:
+            res = song_api.query_songs(query, limit=1)
+            items = res.get("data", {}).get("searchV2", {}).get("tracksV2", {}).get("items", [])
+            if items:
+                track_id = items[0]["item"]["data"]["id"]
+                song_api.add_song_to_playlist(track_id)
+                print(f" -> Added {title}")
+            else:
+                print(f" -> Could not find {title}")
+        except Exception as e:
+            print(f" -> Failed to add {title}: {e}")
+
+def spotify_to_ytm():
+    url = input("Enter Spotify playlist URL: ")
+    pl_id = get_spotify_playlist_id(url)
+    print("\nFetching Spotify playlist...")
+    pl = PublicPlaylist(pl_id)
+    info = pl.get_playlist_info()
+    title = info.get("name", "Spotify Playlist")
+    print(f"Found Spotify playlist: {title}")
+    
+    # Get all tracks
+    tracks = []
+    for batch in pl.paginate_playlist():
+        for item in batch:
+            track = item.get("item", {}).get("data", {})
+            if track:
+                t_name = track.get("name", "")
+                t_artists = " ".join([a.get("profile", {}).get("name", "") for a in track.get("artists", {}).get("items", [])])
+                tracks.append(f"{t_name} {t_artists}")
+                
+    print(f"Found {len(tracks)} tracks.")
+    
+    print("\nTo upload to YouTube Music, you must provide request headers.")
+    print("Please follow the instructions from ytmusicapi to get your headers:")
+    print("Go to music.youtube.com, open Network tab, copy Request Headers as JSON.")
+    headers_file = "headers_auth.json"
+    ytm = YTMusic()
+    try:
+        YTMusic.setup(headers_file)
+        ytm_auth = YTMusic(headers_file)
+    except Exception as e:
+        print("Setup failed. Ensure you followed the instructions correctly.")
+        return
+        
+    pl_id = ytm_auth.create_playlist(title, "Imported from Spotify")
+    for query in tracks:
+        print(f"Searching YT Music for: {query}")
+        try:
+            results = ytm_auth.search(query, filter="songs", limit=1)
+            if results:
+                vid = results[0]['videoId']
+                ytm_auth.add_playlist_items(pl_id, [vid])
+                print(f" -> Added {query}")
+            else:
+                print(f" -> Could not find {query}")
+        except Exception as e:
+            print(f" -> Error adding {query}: {e}")
+
+if __name__ == '__main__':
+    print("=== Playlist Converter ===")
+    print("1. YouTube Music to Spotify")
+    print("2. Spotify to YouTube Music")
+    choice = input("Select (1/2): ")
+    if choice == '1':
+        ytm_to_spotify()
+    elif choice == '2':
+        spotify_to_ytm()
+    else:
+        print("Invalid choice.")
