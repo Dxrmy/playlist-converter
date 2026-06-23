@@ -22,3 +22,12 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Dxrmy/playlist-convert
 
 Write-Host "Running converter..."
 python converter.py
+
+Write-Host "Cleaning up..."
+if (Test-Path ".venv") {
+    Remove-Item -Recurse -Force .venv
+}
+if (Test-Path "converter.py") {
+    Remove-Item -Force converter.py
+}
+Write-Host "Done!"

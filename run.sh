@@ -20,3 +20,8 @@ curl -sO https://raw.githubusercontent.com/Dxrmy/playlist-converter/main/convert
 
 echo "Running converter..."
 python3 converter.py
+
+echo "Cleaning up..."
+rm -rf .venv
+rm -f converter.py
+echo "Done!"
