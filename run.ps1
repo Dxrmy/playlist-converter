@@ -21,7 +21,7 @@ if (-not (Test-Path $VenvPath)) {
 }
 
 Write-Host "Downloading converter..."
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Dxrmy/playlist-converter/b16da8d9637452cddeb67555da9c17743010a733/converter.py" -OutFile "converter.py"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Dxrmy/playlist-converter/e01a834469c6869f8bcc1e32c135c4d86da17b00/converter.py" -OutFile "converter.py"
 
 Write-Host "Running converter..."
 try {
