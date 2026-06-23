@@ -15,7 +15,10 @@ if (Test-Path $activate) {
 }
 
 Write-Host "Installing dependencies..."
-pip install -r requirements.txt --quiet
+pip install spotapi ytmusicapi requests --quiet
+
+Write-Host "Downloading converter..."
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Dxrmy/playlist-converter/main/converter.py" -OutFile "converter.py"
 
 Write-Host "Running converter..."
 python converter.py

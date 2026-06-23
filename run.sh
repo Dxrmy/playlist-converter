@@ -13,7 +13,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 echo "Installing dependencies..."
-pip install -r requirements.txt --quiet
+pip install spotapi ytmusicapi requests --quiet
+
+echo "Downloading converter..."
+curl -sO https://raw.githubusercontent.com/Dxrmy/playlist-converter/main/converter.py
 
 echo "Running converter..."
 python3 converter.py
