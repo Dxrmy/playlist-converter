@@ -9,25 +9,23 @@ if (!(Get-Command "python" -ErrorAction SilentlyContinue)) {
 
 Write-Host "Setting up virtual environment..."
 python -m venv .venv
-$activate = ".\.venv\Scripts\Activate.ps1"
-if (Test-Path $activate) {
-    & $activate
-}
 
 Write-Host "Installing dependencies..."
-pip install spotapi ytmusicapi requests --quiet
+.\.venv\Scripts\pip.exe install spotapi ytmusicapi requests pymongo --quiet
 
 Write-Host "Downloading converter..."
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Dxrmy/playlist-converter/main/converter.py" -OutFile "converter.py"
 
 Write-Host "Running converter..."
-python converter.py
-
-Write-Host "Cleaning up..."
-if (Test-Path ".venv") {
-    Remove-Item -Recurse -Force .venv
+try {
+    .\.venv\Scripts\python.exe converter.py
+} finally {
+    Write-Host "Cleaning up..."
+    if (Test-Path ".venv") {
+        Remove-Item -Recurse -Force .venv -ErrorAction SilentlyContinue
+    }
+    if (Test-Path "converter.py") {
+        Remove-Item -Force converter.py -ErrorAction SilentlyContinue
+    }
+    Write-Host "Done!"
 }
-if (Test-Path "converter.py") {
-    Remove-Item -Force converter.py
-}
-Write-Host "Done!"
