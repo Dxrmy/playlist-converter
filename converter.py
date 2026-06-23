@@ -34,6 +34,7 @@ def ytm_to_spotify():
     priv_pl.set_playlist(new_uri)
     song_api = Song(priv_pl)
     
+    failed_tracks = []
     for track in pl['tracks']:
         title = track['title']
         artists = " ".join([a['name'] for a in track['artists']]) if track['artists'] else ""
@@ -48,8 +49,17 @@ def ytm_to_spotify():
                 print(f" -> Added {title}")
             else:
                 print(f" -> Could not find {title}")
+                failed_tracks.append(title)
         except Exception as e:
             print(f" -> Failed to add {title}: {e}")
+            failed_tracks.append(title)
+
+    if failed_tracks:
+        print(f"\nCompleted! However, {len(failed_tracks)} tracks could not be found/added:")
+        for t in failed_tracks:
+            print(f"  - {t}")
+    else:
+        print("\nCompleted! All tracks were successfully added.")
 
 def spotify_to_ytm():
     url = input("Enter Spotify playlist URL: ")
@@ -57,7 +67,9 @@ def spotify_to_ytm():
     print("\nFetching Spotify playlist...")
     pl = PublicPlaylist(pl_id)
     info = pl.get_playlist_info()
-    title = info.get("name", "Spotify Playlist")
+    pl_data = info.get("data", {}).get("playlistV2", {})
+    title = pl_data.get("name", "Spotify Playlist")
+    owner = pl_data.get("ownerV2", {}).get("data", {}).get("name", "")
     print(f"Found Spotify playlist: {title}")
     
     # Get all tracks
@@ -85,19 +97,30 @@ def spotify_to_ytm():
         print(f"Setup failed: {e}")
         return
         
-    pl_id = ytm_auth.create_playlist(title, "Imported from Spotify")
+    desc = f"Imported from Spotify account {owner} (https://github.com/Dxrmy/playlist-converter)" if owner else "Imported from Spotify (https://github.com/Dxrmy/playlist-converter)"
+    pl_id = ytm_auth.create_playlist(title, desc)
+    failed_tracks = []
     for query in tracks:
         print(f"Searching YT Music for: {query}")
         try:
             results = ytm_auth.search(query, filter="songs", limit=1)
             if results:
                 vid = results[0]['videoId']
-                ytm_auth.add_playlist_items(pl_id, [vid])
+                ytm_auth.add_playlist_items(pl_id, [vid], duplicates=True)
                 print(f" -> Added {query}")
             else:
                 print(f" -> Could not find {query}")
+                failed_tracks.append(query)
         except Exception as e:
             print(f" -> Error adding {query}: {e}")
+            failed_tracks.append(query)
+
+    if failed_tracks:
+        print(f"\nCompleted! However, {len(failed_tracks)} tracks could not be found/added:")
+        for t in failed_tracks:
+            print(f"  - {t}")
+    else:
+        print("\nCompleted! All tracks were successfully added.")
 
 if __name__ == '__main__':
     print("=== Playlist Converter ===")
