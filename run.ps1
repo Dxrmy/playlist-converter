@@ -14,7 +14,7 @@ Write-Host "Installing dependencies..."
 .\.venv\Scripts\pip.exe install spotapi ytmusicapi requests pymongo redis websockets --quiet
 
 Write-Host "Downloading converter..."
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Dxrmy/playlist-converter/cde7d6c5aa9ef3b4211dc44d358d7b1a0629373c/converter.py" -OutFile "converter.py"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Dxrmy/playlist-converter/04dc30b07f56f947ac9ddec1be3f39f6f9575a9c/converter.py" -OutFile "converter.py"
 
 Write-Host "Running converter..."
 try {
