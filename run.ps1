@@ -1,9 +1,10 @@
 $ErrorActionPreference = 'Stop'
 
+# honestly python on windows is a nightmare so we're just making a venv in localappdata
 Write-Host "=== Playlist Converter Setup ==="
 Write-Host "Checking for Python..."
 if (!(Get-Command "python" -ErrorAction SilentlyContinue)) {
-    Write-Host "Error: Python is required but not installed." -ForegroundColor Red
+    Write-Host "Error: Python is required but not installed. Go install it first!" -ForegroundColor Red
     exit 1
 }
 
@@ -15,6 +16,7 @@ if (-not (Test-Path $VenvPath)) {
     Write-Host "Setting up environment..."
     python -m venv $VenvPath
     Write-Host "Installing dependencies..."
+    # shhh pip dont tell me to upgrade
     & (Join-Path $VenvPath "Scripts\pip.exe") install spotapi ytmusicapi requests pymongo redis websockets rich --quiet --disable-pip-version-check
 }
 

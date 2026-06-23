@@ -1,10 +1,13 @@
 #!/bin/bash
 set -e
 
+# honestly python venvs are annoying but it keeps the system clean
+
+
 echo "=== Playlist Converter Setup ==="
 echo "Checking for Python..."
 if ! command -v python3 &> /dev/null; then
-    echo "Error: Python3 is required but not installed."
+    echo "Error: python3 is required but not installed. Go install it first!"
     exit 1
 fi
 
@@ -16,6 +19,7 @@ if [ ! -d "$VENV_PATH" ]; then
     echo "Setting up environment..."
     python3 -m venv "$VENV_PATH"
     echo "Installing dependencies..."
+    # shhh pip dont tell me to upgrade
     "$VENV_PATH/bin/pip" install spotapi ytmusicapi requests pymongo redis websockets rich --quiet --disable-pip-version-check
 fi
 

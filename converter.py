@@ -1,5 +1,8 @@
+# Playlist Converter 
+# made because spotify and ytm refuse to play nice together
 import sys
 import re
+import os
 import concurrent.futures
 from ytmusicapi import YTMusic
 from spotapi import Login, Config, NoopLogger, PrivatePlaylist, Song, PublicPlaylist
@@ -9,22 +12,24 @@ from rich.console import Console
 console = Console()
 
 def get_ytm_playlist_id(url):
+    # just extract the id from the url using a simple regex
     match = re.search(r'list=([a-zA-Z0-9_-]+)', url)
     if match: return match.group(1)
     return None
 
 def get_spotify_playlist_id(url):
+    # same thing but for spotify
     match = re.search(r'playlist/([a-zA-Z0-9]+)', url)
     if match: return match.group(1)
     return None
 
 def get_ytm_auth():
-    import os
+    # we need headers bc google is annoying
     headers_file = "headers_auth.json"
     if os.path.exists(headers_file):
         try:
             ytm = YTMusic(headers_file)
-            ytm.get_library_playlists(limit=1)
+            ytm.get_library_playlists(limit=1) # test the token
             print("\nUsing existing YouTube Music login.")
             return ytm
         except Exception:
@@ -61,33 +66,41 @@ def process_ytm_playlist(url, ytm, instance, progress):
     new_uri = priv_pl.create_playlist(f"{pl['title']} (from YTM)")
     priv_pl.set_playlist(new_uri)
     
-    failed_tracks = []
-    bar_task = progress.add_task(f"[green]Converting {pl['title'][:20]}...", total=len(pl['tracks']))
-    status_task = progress.add_task("[cyan]Starting...", total=None)
+    busted_tracks = []
+    
+    # rich progress bars because we're fancy
+    bar = progress.add_task(f"[green]Converting {pl['title'][:20]}...", total=len(pl['tracks']))
+    status = progress.add_task("[cyan]Starting...", total=None)
     
     for track in pl['tracks']:
         title = track['title']
         artists = " ".join([a['name'] for a in track['artists']]) if track['artists'] else ""
         query = f"{title} {artists}"
-        progress.update(status_task, description=f"[cyan]Searching: {query[:40]}")
+        
+        progress.update(status, description=f"[cyan]Searching: {query[:40]}")
         try:
+            # hit the search endpoint
             res = song_api.query_songs(query, limit=1)
             items = res.get("data", {}).get("searchV2", {}).get("tracksV2", {}).get("items", [])
             if items:
                 track_id = items[0]["item"]["data"]["id"]
                 song_api.add_song_to_playlist(track_id)
             else:
-                failed_tracks.append(title)
+                # print("couldnt find", title)
+                busted_tracks.append(title)
         except Exception:
-            failed_tracks.append(title)
-        progress.advance(bar_task)
-    progress.remove_task(status_task)
+            # print("error on", title)
+            busted_tracks.append(title)
+            
+        progress.advance(bar)
+    progress.remove_task(status)
     
-    return pl['title'], failed_tracks
+    return pl['title'], busted_tracks
 
 def process_spotify_playlist(url, ytm_auth, progress):
     url = url.strip()
     if not url: return None
+    
     pl_id = get_spotify_playlist_id(url)
     if not pl_id:
         progress.console.print(f"\n[red]Skipping invalid Spotify playlist URL: {url}[/red]")
@@ -105,6 +118,7 @@ def process_spotify_playlist(url, ytm_auth, progress):
     
     tracks = []
     try:
+        # paginate thru the playlist incase its huge
         for batch in pl.paginate_playlist():
             for item in batch.get("items", []):
                 track = item.get("itemV2", {}).get("data", {})
@@ -118,40 +132,42 @@ def process_spotify_playlist(url, ytm_auth, progress):
                 
     desc = "https://github.com/Dxrmy/playlist-converter"
     new_pl_id = ytm_auth.create_playlist(title, desc)
-    failed_tracks = []
+    busted_tracks = []
     
-    bar_task = progress.add_task(f"[green]Converting {title[:20]}...", total=len(tracks))
-    status_task = progress.add_task("[cyan]Starting...", total=None)
+    bar = progress.add_task(f"[green]Converting {title[:20]}...", total=len(tracks))
+    status = progress.add_task("[cyan]Starting...", total=None)
     
     for query in tracks:
-        progress.update(status_task, description=f"[cyan]Searching: {query[:40]}")
+        progress.update(status, description=f"[cyan]Searching: {query[:40]}")
         try:
             results = ytm_auth.search(query, filter="songs", limit=1)
             if results:
                 vid = results[0]['videoId']
                 ytm_auth.add_playlist_items(new_pl_id, [vid], duplicates=True)
             else:
-                failed_tracks.append(query)
+                busted_tracks.append(query)
         except Exception:
-            failed_tracks.append(query)
-        progress.advance(bar_task)
-    progress.remove_task(status_task)
+            busted_tracks.append(query)
+            
+        progress.advance(bar)
+    progress.remove_task(status)
     
-    return title, failed_tracks
+    return title, busted_tracks
 
 def report_results(results):
     for result in results:
         if not result: continue
-        title, failed_tracks = result
-        if failed_tracks:
-            console.print(f"\n[yellow]Completed {title}! However, {len(failed_tracks)} tracks could not be found/added:[/yellow]")
-            for t in failed_tracks:
+        title, busted_tracks = result
+        if busted_tracks:
+            console.print(f"\n[yellow]Finished {title}! But {len(busted_tracks)} tracks failed to transfer:[/yellow]")
+            for t in busted_tracks:
                 console.print(f"  - {t}")
         else:
-            console.print(f"\n[green]Completed {title}! All tracks were successfully added.[/green]")
+            console.print(f"\n[green]Finished {title}! All tracks transferred perfectly.[/green]")
 
 def ytm_to_spotify():
     urls = input("Enter YouTube Music playlist URL(s) separated by commas: ").split(",")
+    # warning about rate limits lol
     parallel = input("Process playlists in parallel? (Warning: May cause rate limiting) (y/N): ").lower() == 'y'
     
     print("\nLog in to Spotify to create playlist(s):")
@@ -167,6 +183,7 @@ def ytm_to_spotify():
     with Progress(TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), console=console) as progress:
         results = []
         if parallel:
+            # don't do more than 5 or spotify gets mad
             with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(urls))) as executor:
                 futures = [executor.submit(process_ytm_playlist, url, ytm, instance, progress) for url in urls]
                 for future in concurrent.futures.as_completed(futures):
@@ -211,4 +228,4 @@ if __name__ == '__main__':
         elif choice == '3':
             break
         else:
-            print("Invalid choice.")
+            print("Invalid choice, try again.")
