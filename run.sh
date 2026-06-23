@@ -12,7 +12,7 @@ echo "Setting up virtual environment..."
 python3 -m venv .venv
 
 echo "Installing dependencies..."
-./.venv/bin/pip install spotapi ytmusicapi requests pymongo --quiet
+./.venv/bin/pip install spotapi ytmusicapi requests pymongo redis websockets --quiet
 
 echo "Downloading converter..."
 curl -sO https://raw.githubusercontent.com/Dxrmy/playlist-converter/main/converter.py

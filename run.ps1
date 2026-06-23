@@ -11,7 +11,7 @@ Write-Host "Setting up virtual environment..."
 python -m venv .venv
 
 Write-Host "Installing dependencies..."
-.\.venv\Scripts\pip.exe install spotapi ytmusicapi requests pymongo --quiet
+.\.venv\Scripts\pip.exe install spotapi ytmusicapi requests pymongo redis websockets --quiet
 
 Write-Host "Downloading converter..."
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Dxrmy/playlist-converter/main/converter.py" -OutFile "converter.py"
