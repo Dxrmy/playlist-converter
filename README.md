@@ -2,6 +2,8 @@
 
 Seamlessly convert and transfer your playlists between YouTube Music and Spotify, and vice versa. 
 
+> **Note:** I have personally only tested this for transferring from **Spotify to YouTube Music**. I have not tried it the other way around yet!
+
 Works cleanly using unofficial APIs, meaning you do not need to register a Spotify Developer App or configure complex OAuth flows. You only need to log in to the service you are transferring *to*.
 
 ## Usage
