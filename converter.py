@@ -6,12 +6,12 @@ from spotapi import Login, Config, NoopLogger, PrivatePlaylist, Song, PublicPlay
 def get_ytm_playlist_id(url):
     match = re.search(r'list=([a-zA-Z0-9_-]+)', url)
     if match: return match.group(1)
-    return url
+    return None
 
 def get_spotify_playlist_id(url):
     match = re.search(r'playlist/([a-zA-Z0-9]+)', url)
     if match: return match.group(1)
-    return url
+    return None
 
 def get_ytm_auth():
     import os
@@ -55,6 +55,10 @@ def ytm_to_spotify():
         url = url.strip()
         if not url: continue
         pl_id = get_ytm_playlist_id(url)
+        if not pl_id:
+            print(f"\nSkipping invalid YouTube Music playlist URL: {url}")
+            continue
+            
         print(f"\nFetching YT Music playlist...")
         try:
             pl = ytm.get_playlist(pl_id)
@@ -103,6 +107,10 @@ def spotify_to_ytm():
         url = url.strip()
         if not url: continue
         pl_id = get_spotify_playlist_id(url)
+        if not pl_id:
+            print(f"\nSkipping invalid Spotify playlist URL: {url}")
+            continue
+            
         print(f"\nFetching Spotify playlist...")
         try:
             pl = PublicPlaylist(pl_id)
@@ -113,23 +121,24 @@ def spotify_to_ytm():
             
         pl_data = info.get("data", {}).get("playlistV2", {})
         title = pl_data.get("name", "Spotify Playlist")
-        owner = pl_data.get("ownerV2", {}).get("data", {}).get("name", "")
-        if owner:
-            title = f"{title} - {owner}"
         print(f"Found Spotify playlist: {title}")
         
         tracks = []
-        for batch in pl.paginate_playlist():
-            for item in batch.get("items", []):
-                track = item.get("itemV2", {}).get("data", {})
-                if track:
-                    t_name = track.get("name", "")
-                    t_artists = " ".join([a.get("profile", {}).get("name", "") for a in track.get("artists", {}).get("items", [])])
-                    tracks.append(f"{t_name} {t_artists}")
+        try:
+            for batch in pl.paginate_playlist():
+                for item in batch.get("items", []):
+                    track = item.get("itemV2", {}).get("data", {})
+                    if track:
+                        t_name = track.get("name", "")
+                        t_artists = " ".join([a.get("profile", {}).get("name", "") for a in track.get("artists", {}).get("items", [])])
+                        tracks.append(f"{t_name} {t_artists}")
+        except Exception as e:
+            print(f"Failed to extract tracks (is this a valid Spotify playlist URL?): {e}")
+            continue
                     
         print(f"Found {len(tracks)} tracks.")
         
-        desc = f"Imported from Spotify account {owner} (https://github.com/Dxrmy/playlist-converter)" if owner else "Imported from Spotify (https://github.com/Dxrmy/playlist-converter)"
+        desc = "https://github.com/Dxrmy/playlist-converter"
         new_pl_id = ytm_auth.create_playlist(title, desc)
         failed_tracks = []
         for query in tracks:
