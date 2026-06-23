@@ -1,5 +1,6 @@
 import sys
 import re
+import concurrent.futures
 from ytmusicapi import YTMusic
 from spotapi import Login, Config, NoopLogger, PrivatePlaylist, Song, PublicPlaylist
 from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn
@@ -40,8 +41,118 @@ def get_ytm_auth():
         print(f"Setup failed: {e}")
         return None
 
+def process_ytm_playlist(url, ytm, instance, progress):
+    url = url.strip()
+    if not url: return None
+    pl_id = get_ytm_playlist_id(url)
+    if not pl_id:
+        progress.console.print(f"\n[red]Skipping invalid YouTube Music playlist URL: {url}[/red]")
+        return None
+        
+    try:
+        pl = ytm.get_playlist(pl_id)
+    except Exception as e:
+        progress.console.print(f"[red]Failed to fetch YTM playlist {url}: {e}[/red]")
+        return None
+        
+    priv_pl = PrivatePlaylist(instance)
+    song_api = Song(priv_pl)
+    
+    new_uri = priv_pl.create_playlist(f"{pl['title']} (from YTM)")
+    priv_pl.set_playlist(new_uri)
+    
+    failed_tracks = []
+    bar_task = progress.add_task(f"[green]Converting {pl['title'][:20]}...", total=len(pl['tracks']))
+    status_task = progress.add_task("[cyan]Starting...", total=None)
+    
+    for track in pl['tracks']:
+        title = track['title']
+        artists = " ".join([a['name'] for a in track['artists']]) if track['artists'] else ""
+        query = f"{title} {artists}"
+        progress.update(status_task, description=f"[cyan]Searching: {query[:40]}")
+        try:
+            res = song_api.query_songs(query, limit=1)
+            items = res.get("data", {}).get("searchV2", {}).get("tracksV2", {}).get("items", [])
+            if items:
+                track_id = items[0]["item"]["data"]["id"]
+                song_api.add_song_to_playlist(track_id)
+            else:
+                failed_tracks.append(title)
+        except Exception:
+            failed_tracks.append(title)
+        progress.advance(bar_task)
+    progress.remove_task(status_task)
+    
+    return pl['title'], failed_tracks
+
+def process_spotify_playlist(url, ytm_auth, progress):
+    url = url.strip()
+    if not url: return None
+    pl_id = get_spotify_playlist_id(url)
+    if not pl_id:
+        progress.console.print(f"\n[red]Skipping invalid Spotify playlist URL: {url}[/red]")
+        return None
+        
+    try:
+        pl = PublicPlaylist(pl_id)
+        info = pl.get_playlist_info()
+    except Exception as e:
+        progress.console.print(f"[red]Failed to fetch Spotify playlist {url}: {e}[/red]")
+        return None
+        
+    pl_data = info.get("data", {}).get("playlistV2", {})
+    title = pl_data.get("name", "Spotify Playlist")
+    
+    tracks = []
+    try:
+        for batch in pl.paginate_playlist():
+            for item in batch.get("items", []):
+                track = item.get("itemV2", {}).get("data", {})
+                if track:
+                    t_name = track.get("name", "")
+                    t_artists = " ".join([a.get("profile", {}).get("name", "") for a in track.get("artists", {}).get("items", [])])
+                    tracks.append(f"{t_name} {t_artists}")
+    except Exception as e:
+        progress.console.print(f"[red]Failed to extract tracks for {url}: {e}[/red]")
+        return None
+                
+    desc = "https://github.com/Dxrmy/playlist-converter"
+    new_pl_id = ytm_auth.create_playlist(title, desc)
+    failed_tracks = []
+    
+    bar_task = progress.add_task(f"[green]Converting {title[:20]}...", total=len(tracks))
+    status_task = progress.add_task("[cyan]Starting...", total=None)
+    
+    for query in tracks:
+        progress.update(status_task, description=f"[cyan]Searching: {query[:40]}")
+        try:
+            results = ytm_auth.search(query, filter="songs", limit=1)
+            if results:
+                vid = results[0]['videoId']
+                ytm_auth.add_playlist_items(new_pl_id, [vid], duplicates=True)
+            else:
+                failed_tracks.append(query)
+        except Exception:
+            failed_tracks.append(query)
+        progress.advance(bar_task)
+    progress.remove_task(status_task)
+    
+    return title, failed_tracks
+
+def report_results(results):
+    for result in results:
+        if not result: continue
+        title, failed_tracks = result
+        if failed_tracks:
+            console.print(f"\n[yellow]Completed {title}! However, {len(failed_tracks)} tracks could not be found/added:[/yellow]")
+            for t in failed_tracks:
+                console.print(f"  - {t}")
+        else:
+            console.print(f"\n[green]Completed {title}! All tracks were successfully added.[/green]")
+
 def ytm_to_spotify():
     urls = input("Enter YouTube Music playlist URL(s) separated by commas: ").split(",")
+    parallel = input("Process playlists in parallel? (Warning: May cause rate limiting) (y/N): ").lower() == 'y'
     
     print("\nLog in to Spotify to create playlist(s):")
     email = input("Spotify Email: ")
@@ -51,137 +162,40 @@ def ytm_to_spotify():
     print("Logging into Spotify...")
     instance.login()
     
-    priv_pl = PrivatePlaylist(instance)
-    song_api = Song(priv_pl)
     ytm = YTMusic()
     
-    for url in urls:
-        url = url.strip()
-        if not url: continue
-        pl_id = get_ytm_playlist_id(url)
-        if not pl_id:
-            print(f"\nSkipping invalid YouTube Music playlist URL: {url}")
-            continue
-            
-        print(f"\nFetching YT Music playlist...")
-        try:
-            pl = ytm.get_playlist(pl_id)
-        except Exception as e:
-            print(f"Failed to fetch YTM playlist: {e}")
-            continue
-            
-        print(f"Found YT Music playlist: {pl['title']}")
-        
-        new_uri = priv_pl.create_playlist(f"{pl['title']} (from YTM)")
-        priv_pl.set_playlist(new_uri)
-        
-        failed_tracks = []
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console
-        ) as progress:
-            bar_task = progress.add_task(f"[green]Converting {pl['title']}...", total=len(pl['tracks']))
-            status_task = progress.add_task("[cyan]Starting...", total=None)
-            
-            for track in pl['tracks']:
-                title = track['title']
-                artists = " ".join([a['name'] for a in track['artists']]) if track['artists'] else ""
-                query = f"{title} {artists}"
-                progress.update(status_task, description=f"[cyan]Searching: {query}")
-                try:
-                    res = song_api.query_songs(query, limit=1)
-                    items = res.get("data", {}).get("searchV2", {}).get("tracksV2", {}).get("items", [])
-                    if items:
-                        track_id = items[0]["item"]["data"]["id"]
-                        song_api.add_song_to_playlist(track_id)
-                    else:
-                        failed_tracks.append(title)
-                except Exception:
-                    failed_tracks.append(title)
-                progress.advance(bar_task)
-            progress.remove_task(status_task)
-
-        if failed_tracks:
-            console.print(f"\n[yellow]Completed {pl['title']}! However, {len(failed_tracks)} tracks could not be found/added:[/yellow]")
-            for t in failed_tracks:
-                console.print(f"  - {t}")
+    with Progress(TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), console=console) as progress:
+        results = []
+        if parallel:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(urls))) as executor:
+                futures = [executor.submit(process_ytm_playlist, url, ytm, instance, progress) for url in urls]
+                for future in concurrent.futures.as_completed(futures):
+                    results.append(future.result())
         else:
-            console.print(f"\n[green]Completed {pl['title']}! All tracks were successfully added.[/green]")
+            for url in urls:
+                results.append(process_ytm_playlist(url, ytm, instance, progress))
+                
+    report_results(results)
 
 def spotify_to_ytm():
     urls = input("Enter Spotify playlist URL(s) separated by commas: ").split(",")
+    parallel = input("Process playlists in parallel? (Warning: May cause rate limiting) (y/N): ").lower() == 'y'
+    
     ytm_auth = get_ytm_auth()
     if not ytm_auth: return
     
-    for url in urls:
-        url = url.strip()
-        if not url: continue
-        pl_id = get_spotify_playlist_id(url)
-        if not pl_id:
-            print(f"\nSkipping invalid Spotify playlist URL: {url}")
-            continue
-            
-        print(f"\nFetching Spotify playlist...")
-        try:
-            pl = PublicPlaylist(pl_id)
-            info = pl.get_playlist_info()
-        except Exception as e:
-            print(f"Failed to fetch Spotify playlist: {e}")
-            continue
-            
-        pl_data = info.get("data", {}).get("playlistV2", {})
-        title = pl_data.get("name", "Spotify Playlist")
-        print(f"Found Spotify playlist: {title}")
-        
-        tracks = []
-        try:
-            for batch in pl.paginate_playlist():
-                for item in batch.get("items", []):
-                    track = item.get("itemV2", {}).get("data", {})
-                    if track:
-                        t_name = track.get("name", "")
-                        t_artists = " ".join([a.get("profile", {}).get("name", "") for a in track.get("artists", {}).get("items", [])])
-                        tracks.append(f"{t_name} {t_artists}")
-        except Exception as e:
-            print(f"Failed to extract tracks (is this a valid Spotify playlist URL?): {e}")
-            continue
-                    
-        print(f"Found {len(tracks)} tracks.")
-        
-        desc = "https://github.com/Dxrmy/playlist-converter"
-        new_pl_id = ytm_auth.create_playlist(title, desc)
-        failed_tracks = []
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console
-        ) as progress:
-            bar_task = progress.add_task(f"[green]Converting {title}...", total=len(tracks))
-            status_task = progress.add_task("[cyan]Starting...", total=None)
-            
-            for query in tracks:
-                progress.update(status_task, description=f"[cyan]Searching: {query}")
-                try:
-                    results = ytm_auth.search(query, filter="songs", limit=1)
-                    if results:
-                        vid = results[0]['videoId']
-                        ytm_auth.add_playlist_items(new_pl_id, [vid], duplicates=True)
-                    else:
-                        failed_tracks.append(query)
-                except Exception:
-                    failed_tracks.append(query)
-                progress.advance(bar_task)
-            progress.remove_task(status_task)
-
-        if failed_tracks:
-            console.print(f"\n[yellow]Completed {title}! However, {len(failed_tracks)} tracks could not be found/added:[/yellow]")
-            for t in failed_tracks:
-                console.print(f"  - {t}")
+    with Progress(TextColumn("[progress.description]{task.description}"), BarColumn(), TaskProgressColumn(), console=console) as progress:
+        results = []
+        if parallel:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(urls))) as executor:
+                futures = [executor.submit(process_spotify_playlist, url, ytm_auth, progress) for url in urls]
+                for future in concurrent.futures.as_completed(futures):
+                    results.append(future.result())
         else:
-            console.print(f"\n[green]Completed {title}! All tracks were successfully added.[/green]")
+            for url in urls:
+                results.append(process_spotify_playlist(url, ytm_auth, progress))
+
+    report_results(results)
 
 if __name__ == '__main__':
     while True:
