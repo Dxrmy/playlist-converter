@@ -15,7 +15,7 @@ if (-not (Test-Path $VenvPath)) {
     Write-Host "Setting up environment..."
     python -m venv $VenvPath
     Write-Host "Installing dependencies..."
-    & (Join-Path $VenvPath "Scripts\pip.exe") install spotapi ytmusicapi requests pymongo redis websockets --quiet --disable-pip-version-check
+    & (Join-Path $VenvPath "Scripts\pip.exe") install spotapi ytmusicapi requests pymongo redis websockets rich --quiet --disable-pip-version-check
 }
 
 Write-Host "Downloading converter..."

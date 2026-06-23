@@ -2,6 +2,10 @@ import sys
 import re
 from ytmusicapi import YTMusic
 from spotapi import Login, Config, NoopLogger, PrivatePlaylist, Song, PublicPlaylist
+from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn
+from rich.console import Console
+
+console = Console()
 
 def get_ytm_playlist_id(url):
     match = re.search(r'list=([a-zA-Z0-9_-]+)', url)
@@ -72,31 +76,39 @@ def ytm_to_spotify():
         priv_pl.set_playlist(new_uri)
         
         failed_tracks = []
-        for track in pl['tracks']:
-            title = track['title']
-            artists = " ".join([a['name'] for a in track['artists']]) if track['artists'] else ""
-            query = f"{title} {artists}"
-            print(f"Searching Spotify for: {query}")
-            try:
-                res = song_api.query_songs(query, limit=1)
-                items = res.get("data", {}).get("searchV2", {}).get("tracksV2", {}).get("items", [])
-                if items:
-                    track_id = items[0]["item"]["data"]["id"]
-                    song_api.add_song_to_playlist(track_id)
-                    print(f" -> Added {title}")
-                else:
-                    print(f" -> Could not find {title}")
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console
+        ) as progress:
+            bar_task = progress.add_task(f"[green]Converting {pl['title']}...", total=len(pl['tracks']))
+            status_task = progress.add_task("[cyan]Starting...", total=None)
+            
+            for track in pl['tracks']:
+                title = track['title']
+                artists = " ".join([a['name'] for a in track['artists']]) if track['artists'] else ""
+                query = f"{title} {artists}"
+                progress.update(status_task, description=f"[cyan]Searching: {query}")
+                try:
+                    res = song_api.query_songs(query, limit=1)
+                    items = res.get("data", {}).get("searchV2", {}).get("tracksV2", {}).get("items", [])
+                    if items:
+                        track_id = items[0]["item"]["data"]["id"]
+                        song_api.add_song_to_playlist(track_id)
+                    else:
+                        failed_tracks.append(title)
+                except Exception:
                     failed_tracks.append(title)
-            except Exception as e:
-                print(f" -> Failed to add {title}: {e}")
-                failed_tracks.append(title)
+                progress.advance(bar_task)
+            progress.remove_task(status_task)
 
         if failed_tracks:
-            print(f"\nCompleted {pl['title']}! However, {len(failed_tracks)} tracks could not be found/added:")
+            console.print(f"\n[yellow]Completed {pl['title']}! However, {len(failed_tracks)} tracks could not be found/added:[/yellow]")
             for t in failed_tracks:
-                print(f"  - {t}")
+                console.print(f"  - {t}")
         else:
-            print(f"\nCompleted {pl['title']}! All tracks were successfully added.")
+            console.print(f"\n[green]Completed {pl['title']}! All tracks were successfully added.[/green]")
 
 def spotify_to_ytm():
     urls = input("Enter Spotify playlist URL(s) separated by commas: ").split(",")
@@ -141,27 +153,35 @@ def spotify_to_ytm():
         desc = "https://github.com/Dxrmy/playlist-converter"
         new_pl_id = ytm_auth.create_playlist(title, desc)
         failed_tracks = []
-        for query in tracks:
-            print(f"Searching YT Music for: {query}")
-            try:
-                results = ytm_auth.search(query, filter="songs", limit=1)
-                if results:
-                    vid = results[0]['videoId']
-                    ytm_auth.add_playlist_items(new_pl_id, [vid], duplicates=True)
-                    print(f" -> Added {query}")
-                else:
-                    print(f" -> Could not find {query}")
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console
+        ) as progress:
+            bar_task = progress.add_task(f"[green]Converting {title}...", total=len(tracks))
+            status_task = progress.add_task("[cyan]Starting...", total=None)
+            
+            for query in tracks:
+                progress.update(status_task, description=f"[cyan]Searching: {query}")
+                try:
+                    results = ytm_auth.search(query, filter="songs", limit=1)
+                    if results:
+                        vid = results[0]['videoId']
+                        ytm_auth.add_playlist_items(new_pl_id, [vid], duplicates=True)
+                    else:
+                        failed_tracks.append(query)
+                except Exception:
                     failed_tracks.append(query)
-            except Exception as e:
-                print(f" -> Error adding {query}: {e}")
-                failed_tracks.append(query)
+                progress.advance(bar_task)
+            progress.remove_task(status_task)
 
         if failed_tracks:
-            print(f"\nCompleted {title}! However, {len(failed_tracks)} tracks could not be found/added:")
+            console.print(f"\n[yellow]Completed {title}! However, {len(failed_tracks)} tracks could not be found/added:[/yellow]")
             for t in failed_tracks:
-                print(f"  - {t}")
+                console.print(f"  - {t}")
         else:
-            print(f"\nCompleted {title}! All tracks were successfully added.")
+            console.print(f"\n[green]Completed {title}! All tracks were successfully added.[/green]")
 
 if __name__ == '__main__':
     while True:

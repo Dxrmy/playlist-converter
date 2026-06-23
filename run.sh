@@ -16,7 +16,7 @@ if [ ! -d "$VENV_PATH" ]; then
     echo "Setting up environment..."
     python3 -m venv "$VENV_PATH"
     echo "Installing dependencies..."
-    "$VENV_PATH/bin/pip" install spotapi ytmusicapi requests pymongo redis websockets --quiet --disable-pip-version-check
+    "$VENV_PATH/bin/pip" install spotapi ytmusicapi requests pymongo redis websockets rich --quiet --disable-pip-version-check
 fi
 
 echo "Downloading converter..."
