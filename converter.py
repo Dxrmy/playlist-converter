@@ -78,10 +78,11 @@ def spotify_to_ytm():
     headers_file = "headers_auth.json"
     ytm = YTMusic()
     try:
-        YTMusic.setup(headers_file)
+        from ytmusicapi import setup
+        setup(filepath=headers_file)
         ytm_auth = YTMusic(headers_file)
     except Exception as e:
-        print("Setup failed. Ensure you followed the instructions correctly.")
+        print(f"Setup failed: {e}")
         return
         
     pl_id = ytm_auth.create_playlist(title, "Imported from Spotify")
